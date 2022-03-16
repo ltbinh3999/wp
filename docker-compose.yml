@@ -1,38 +1,55 @@
-version: "3.9"
-    
+version: '3'
+
 services:
-  mysql:
-    image: mysql
-    container_name: mysql
-    volumes:
-      - db_data:/var/lib/mysql
-    restart: always
+  db:
+    image: mysql:8.0
+    container_name: db
+    restart: unless-stopped
+    command: '--default-authentication-plugin=mysql_native_password'
+    env_file: .env
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: wordpress
-      MYSQL_USER: wordpress
-      MYSQL_PASSWORD: wordpress
-    
-  wordpress:
+      - MYSQL_DATABASE=wordpress
+    volumes: 
+      - dbdata:/var/lib/mysql
+  wp:
+    image: wordpress:5.9.2-fpm-alpine
     depends_on:
-      - mysql
-    image: wordpress
-    container_name: wordpress
+      - db
+    container_name: wp
+    restart: unless-stopped
     volumes:
-      - wordpress_data:/var/www/html
-    ports:
-      - "8000:80"
-    restart: always
+      - wordpress:/var/www/html
+    env_file: .env
     environment:
-      WORDPRESS_DB_HOST: mysql
-      WORDPRESS_DB_USER: wordpress
-      WORDPRESS_DB_PASSWORD: wordpress
-      WORDPRESS_DB_NAME: wordpress
+      - WORDPRESS_DB_HOST=db:3306
+      - WORDPRESS_DB_USER=$MYSQL_USER
+      - WORDPRESS_DB_PASSWORD=$MYSQL_PASSWORD
+      - WORDPRESS_DB_NAME=wordpress
+  webserver:
+    depends_on:
+      - wp
+    image: nginx:1.15.12-alpine
+    container_name: webserver
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - wordpress:/var/www/html
+      - ./nginx-conf:/etc/nginx/conf.d
+      - certbotdata:/etc/letsencrypt
+
+  certbot:
+    depends_on:
+      - webserver
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - certbotdata:/etc/letsencrypt
+      - wordpress:/var/www/html
+    command: certonly --webroot --webroot-path=/var/www/html --email binhdevpersonal@email.com --agree-tos --no-eff-email --force-renewal -d wp.binhdevops.xyz
 
 volumes:
-  db_data: {}
-  wordpress_data: {}
-
-networks:
-  default:
-    name: wordpress
+  wordpress:
+  dbdata:
+  certbotdata:
